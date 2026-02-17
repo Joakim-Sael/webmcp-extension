@@ -63,7 +63,9 @@ function registerTools(configs: WebMcpConfig[]) {
       if (!tool.execution) continue;
       if (seen.has(tool.name)) continue;
       if (declarativeNames.has(tool.name)) {
-        console.warn(`[web-mcp-hub] Skipping tool "${tool.name}" — conflicts with declarative tool on page`);
+        console.warn(
+          `[web-mcp-hub] Skipping tool "${tool.name}" — conflicts with declarative tool on page`,
+        );
         continue;
       }
       seen.add(tool.name);
@@ -73,7 +75,8 @@ function registerTools(configs: WebMcpConfig[]) {
         description: tool.description,
         inputSchema: tool.inputSchema,
         ...(tool.annotations && { annotations: tool.annotations }),
-        execute: (params, agent) => executeTool(tool.name, tool.execution!, params, agent, tool.annotations),
+        execute: (params, agent) =>
+          executeTool(tool.name, tool.execution!, params, agent, tool.annotations),
       });
     }
   }
@@ -160,7 +163,9 @@ async function executeTool(
           return mcpResult(`Submitted ${toolName}${errorSuffix}`);
         }
       }
-      return mcpResult(`Error: Submit target not found for "${toolName}". Selector: ${exec.selector}${errorSuffix}`);
+      return mcpResult(
+        `Error: Submit target not found for "${toolName}". Selector: ${exec.selector}${errorSuffix}`,
+      );
     } else {
       const submitEl = exec.submitSelector
         ? (query(exec.submitSelector, params) as HTMLElement | null)
@@ -171,7 +176,9 @@ async function executeTool(
         setTimeout(() => clickTarget.click(), 0);
         return mcpResult(`Submitted ${toolName}${errorSuffix}`);
       }
-      return mcpResult(`Error: Submit button not found for "${toolName}". Selector: ${exec.submitSelector ?? exec.selector}${errorSuffix}`);
+      return mcpResult(
+        `Error: Submit button not found for "${toolName}". Selector: ${exec.submitSelector ?? exec.selector}${errorSuffix}`,
+      );
     }
   }
 
@@ -187,7 +194,11 @@ async function executeTool(
   }
 
   if (exec.resultSelector) {
-    const result = extractResult(exec.resultSelector, exec.resultExtract ?? "text", exec.resultAttribute);
+    const result = extractResult(
+      exec.resultSelector,
+      exec.resultExtract ?? "text",
+      exec.resultAttribute,
+    );
     if (Array.isArray(result)) {
       return mcpResult(result.join("\n"));
     }

@@ -1,0 +1,19 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+.output
+.wxt
+.turbo
+
+# TypeScript
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local

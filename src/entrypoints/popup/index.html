@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        width: 280px;
+        padding: 12px;
+        font-family: system-ui, sans-serif;
+        background: #09090b;
+        color: #e4e4e7;
+        margin: 0;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 8px;
+      }
+      .status {
+        font-size: 12px;
+        color: #a1a1aa;
+      }
+      .found {
+        color: #4ade80;
+      }
+      .none {
+        color: #a1a1aa;
+      }
+      .settings {
+        margin-top: 12px;
+        border-top: 1px solid #27272a;
+        padding-top: 8px;
+      }
+      .settings label {
+        font-size: 11px;
+        color: #a1a1aa;
+        display: block;
+        margin-bottom: 4px;
+      }
+      .settings input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 4px 6px;
+        font-size: 11px;
+        background: #18181b;
+        color: #e4e4e7;
+        border: 1px solid #27272a;
+        border-radius: 4px;
+      }
+      .settings .saved {
+        font-size: 11px;
+        color: #4ade80;
+        display: none;
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebMCP Hub</h1>
+    <div id="status" class="status">Checking...</div>
+    <div class="settings">
+      <label for="hubUrl">Hub URL</label>
+      <input id="hubUrl" type="url" placeholder="https://webmcp-hub.com" />
+      <div id="saved" class="saved">Saved</div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

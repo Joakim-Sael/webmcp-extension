@@ -52,6 +52,10 @@
         display: none;
         margin-top: 2px;
       }
+      .hint {
+        color: #71717a;
+        font-weight: normal;
+      }
     </style>
   </head>
   <body>
@@ -61,6 +65,11 @@
       <label for="hubUrl">Hub URL</label>
       <input id="hubUrl" type="url" placeholder="https://webmcp-hub.com" />
       <div id="saved" class="saved">Saved</div>
+    </div>
+    <div class="settings">
+      <label for="apiKey">API Key <span class="hint">(optional — shows your own unverified configs)</span></label>
+      <input id="apiKey" type="password" placeholder="whub_..." />
+      <div id="apiKeySaved" class="saved">Saved</div>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

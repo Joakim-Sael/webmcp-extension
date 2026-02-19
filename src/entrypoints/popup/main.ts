@@ -1,15 +1,23 @@
 import type { WebMcpConfig } from "@/types";
-import { getHubUrl, setHubUrl } from "@/lib/hub-client";
+import { getHubUrl, setHubUrl, getApiKey, setApiKey } from "@/lib/hub-client";
 
 async function init() {
   const statusEl = document.getElementById("status")!;
   const hubUrlInput = document.getElementById("hubUrl") as HTMLInputElement;
   const savedEl = document.getElementById("saved")!;
+  const apiKeyInput = document.getElementById("apiKey") as HTMLInputElement;
+  const apiKeySavedEl = document.getElementById("apiKeySaved")!;
 
   // Load current hub URL into input
   hubUrlInput.value = await getHubUrl();
 
-  // Save on change (debounced)
+  // Load current API key into input (masked)
+  const currentKey = await getApiKey();
+  if (currentKey) {
+    apiKeyInput.value = currentKey;
+  }
+
+  // Save hub URL on change (debounced)
   let saveTimeout: ReturnType<typeof setTimeout>;
   hubUrlInput.addEventListener("input", () => {
     clearTimeout(saveTimeout);
@@ -22,6 +30,19 @@ async function init() {
           savedEl.style.display = "none";
         }, 1500);
       }
+    }, 500);
+  });
+
+  // Save API key on change (debounced)
+  let apiKeySaveTimeout: ReturnType<typeof setTimeout>;
+  apiKeyInput.addEventListener("input", () => {
+    clearTimeout(apiKeySaveTimeout);
+    apiKeySaveTimeout = setTimeout(async () => {
+      await setApiKey(apiKeyInput.value.trim());
+      apiKeySavedEl.style.display = "block";
+      setTimeout(() => {
+        apiKeySavedEl.style.display = "none";
+      }, 1500);
     }, 500);
   });
 

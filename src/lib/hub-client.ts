@@ -1,6 +1,6 @@
 import type { WebMcpConfig } from "@/types";
 
-const DEFAULT_HUB_URL = "https://webmcp-hub.com";
+const DEFAULT_HUB_URL = "https://www.webmcp-hub.com";
 
 export async function getHubUrl(): Promise<string> {
   const data = await browser.storage.sync.get("hubUrl");

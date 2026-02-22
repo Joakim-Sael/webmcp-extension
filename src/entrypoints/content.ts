@@ -302,9 +302,10 @@ async function fillField(selector: string, value: unknown): Promise<string | nul
 
   // Contenteditable: the matched element itself may be a wrapper div —
   // check both the element and its first contenteditable child (e.g. X.com's tweet box).
+  // Match any contenteditable value except explicit "false" to handle "true", "", and "plaintext-only".
   const editableEl = el.isContentEditable
     ? el
-    : el.querySelector<HTMLElement>('[contenteditable="true"]');
+    : el.querySelector<HTMLElement>('[contenteditable]:not([contenteditable="false"])');
 
   if (editableEl) {
     editableEl.focus();

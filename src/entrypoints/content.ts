@@ -324,7 +324,12 @@ async function fillField(selector: string, value: unknown): Promise<string | nul
 
     // Fire beforeinput → input in sequence; React 17+ listens at the root for both
     editableEl.dispatchEvent(
-      new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: String(value) }),
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertText",
+        data: String(value),
+      }),
     );
     editableEl.dispatchEvent(
       new InputEvent("input", { bubbles: true, inputType: "insertText", data: String(value) }),

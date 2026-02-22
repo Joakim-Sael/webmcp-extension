@@ -106,6 +106,22 @@ async function executeTool(
   agent?: AgentInterface,
   annotations?: Record<string, string>,
 ): Promise<unknown> {
+  try {
+    return await executeToolInner(toolName, exec, params, agent, annotations);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[webmcp-hub] Tool "${toolName}" threw:`, err);
+    return mcpResult(`Error executing "${toolName}": ${msg}`);
+  }
+}
+
+async function executeToolInner(
+  toolName: string,
+  exec: ExecutionDescriptor,
+  params: Record<string, unknown>,
+  agent?: AgentInterface,
+  annotations?: Record<string, string>,
+): Promise<unknown> {
   // Request user confirmation for destructive tools per WebMCP spec
   if (agent && annotations?.destructiveHint === "true") {
     const confirmed = await agent.requestUserInteraction(async () => {
@@ -188,7 +204,7 @@ async function executeTool(
 
   // Extract result (no submit)
   if (exec.resultWaitSelector) {
-    await waitForSelector(exec.resultWaitSelector);
+    await waitForSelector(exec.resultWaitSelector).catch(() => null);
   } else if (exec.resultDelay) {
     await new Promise((r) => setTimeout(r, exec.resultDelay));
   }
@@ -232,7 +248,8 @@ async function executeStep(step: ActionStep, params: Record<string, unknown>): P
       return err ? `Error: ${err}` : null;
     }
     case "wait": {
-      await waitForSelector(step.selector, step.state, step.timeout);
+      // Soft wait — timeout is non-fatal so a slow response doesn't crash the tool
+      await waitForSelector(step.selector, step.state, step.timeout).catch(() => null);
       return null;
     }
     case "extract": {
@@ -280,10 +297,39 @@ async function fillToolField(field: ToolField, value: unknown): Promise<string |
 
 /** Fill a DOM field. Returns an error message if the element was not found, or null on success. */
 async function fillField(selector: string, value: unknown): Promise<string | null> {
-  const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-    selector,
-  );
+  const el = document.querySelector<HTMLElement>(selector);
   if (!el) return `Element not found: ${selector}`;
+
+  // Contenteditable: the matched element itself may be a wrapper div —
+  // check both the element and its first contenteditable child (e.g. X.com's tweet box).
+  const editableEl = el.isContentEditable
+    ? el
+    : el.querySelector<HTMLElement>('[contenteditable="true"]');
+
+  if (editableEl) {
+    editableEl.focus();
+
+    // document.execCommand is blocked in content scripts without a user gesture.
+    // Instead: clear the DOM directly, set new text, then fire the events React listens to.
+    editableEl.innerHTML = "";
+    editableEl.appendChild(document.createTextNode(String(value)));
+
+    // Move cursor to end so subsequent typing appends correctly
+    const range = document.createRange();
+    range.selectNodeContents(editableEl);
+    range.collapse(false);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    // Fire beforeinput → input in sequence; React 17+ listens at the root for both
+    editableEl.dispatchEvent(
+      new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: String(value) }),
+    );
+    editableEl.dispatchEvent(
+      new InputEvent("input", { bubbles: true, inputType: "insertText", data: String(value) }),
+    );
+    return null;
+  }
 
   if (el instanceof HTMLSelectElement) {
     el.value = String(value);
@@ -292,11 +338,21 @@ async function fillField(selector: string, value: unknown): Promise<string | nul
     el.checked = Boolean(value);
     el.dispatchEvent(new Event("change", { bubbles: true }));
   } else if (el instanceof HTMLInputElement && el.type === "radio") {
-    // Radio: check this specific input if its value matches, otherwise just check it
     el.checked = true;
     el.dispatchEvent(new Event("change", { bubbles: true }));
-  } else {
-    el.value = String(value);
+  } else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    // Use the native prototype setter to bypass React's value property override.
+    // Direct el.value = x calls React's setter which doesn't trigger state updates.
+    const proto =
+      el instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (nativeSetter) {
+      nativeSetter.call(el, String(value));
+    } else {
+      el.value = String(value);
+    }
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }

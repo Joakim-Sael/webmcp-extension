@@ -226,46 +226,6 @@ async function executeToolInner(
   return mcpResult(`Executed ${toolName}`);
 }
 
-function realClick(el: HTMLElement) {
-  // Use element center coordinates so handlers that check clientX/clientY
-  // (animations, hit-tests) receive plausible values.
-  const rect = el.getBoundingClientRect();
-  const x = Math.round(rect.left + rect.width / 2);
-  const y = Math.round(rect.top + rect.height / 2);
-
-  const bubbling: PointerEventInit & MouseEventInit = {
-    bubbles: true,
-    cancelable: true,
-    view: window,
-    clientX: x,
-    clientY: y,
-    screenX: x,
-    screenY: y,
-    pointerId: 1,
-    isPrimary: true,
-  };
-  // pointerenter/pointerleave and mouseenter/mouseleave must NOT bubble — they are
-  // boundary events and React's root-level delegation relies on them being non-bubbling.
-  const nonBubbling: PointerEventInit & MouseEventInit = {
-    ...bubbling,
-    bubbles: false,
-    cancelable: false,
-  };
-
-  el.dispatchEvent(new PointerEvent("pointerover", bubbling));
-  el.dispatchEvent(new PointerEvent("pointerenter", nonBubbling));
-  el.dispatchEvent(new MouseEvent("mouseover", bubbling));
-  el.dispatchEvent(new MouseEvent("mouseenter", nonBubbling));
-  el.dispatchEvent(new PointerEvent("pointerdown", bubbling));
-  el.dispatchEvent(new MouseEvent("mousedown", bubbling));
-  el.dispatchEvent(new PointerEvent("pointerup", bubbling));
-  el.dispatchEvent(new MouseEvent("mouseup", bubbling));
-  el.dispatchEvent(new MouseEvent("click", bubbling));
-  el.dispatchEvent(new PointerEvent("pointerout", bubbling));
-  el.dispatchEvent(new PointerEvent("pointerleave", nonBubbling));
-  el.dispatchEvent(new MouseEvent("mouseout", bubbling));
-  el.dispatchEvent(new MouseEvent("mouseleave", nonBubbling));
-}
 
 async function executeStep(step: ActionStep, params: Record<string, unknown>): Promise<unknown> {
   switch (step.action) {
@@ -322,7 +282,6 @@ async function executeStep(step: ActionStep, params: Record<string, unknown>): P
     case "evaluate": {
       if (step.value) {
         try {
-          // eslint-disable-next-line no-new-func
           await new Function(`return (async () => { ${interpolate(step.value, params)} })()`)();
         } catch (e) {
           console.warn("[webmcp-hub] evaluate step error:", e);

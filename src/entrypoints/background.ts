@@ -5,6 +5,9 @@ export default defineBackground(() => {
   const lastUrl = new Map<number, string>();
   // Monotonic counter per tab — stale responses are discarded after await
   const navSeq = new Map<number, number>();
+  // Domain for which tools are currently registered per tab.
+  // Used to decide whether an empty lookup result should wipe tools or be ignored.
+  const registeredDomain = new Map<number, string>();
 
   async function handleNavigation(tabId: number, rawUrl: string) {
     try {
@@ -33,6 +36,19 @@ export default defineBackground(() => {
       // Another navigation started while we were fetching — discard stale result
       if (navSeq.get(tabId) !== seq) return;
 
+      // Don't wipe tools when a SPA navigation lands on a URL with no matching config
+      // but the domain hasn't changed. This preserves tools across path-only navigations
+      // (e.g. X.com reply dialog updating the URL from /home to /user/status/123).
+      // Only send CONFIGS_FOUND when:
+      //   a) There are configs to register, OR
+      //   b) The domain changed — tools from the previous domain must be cleared
+      const prevDomain = registeredDomain.get(tabId);
+      const domainChanged = prevDomain !== undefined && prevDomain !== domain;
+
+      if (result.configs.length === 0 && !domainChanged) return;
+
+      registeredDomain.set(tabId, domain);
+
       // Store result in session storage keyed by tab ID
       await browser.storage.session.set({
         [`tab-${tabId}`]: {
@@ -60,8 +76,9 @@ export default defineBackground(() => {
   browser.webNavigation.onCompleted.addListener(
     (details) => {
       if (details.frameId !== 0) return;
-      // Clear dedup on full navigation so fresh lookup always runs
+      // Clear dedup and domain tracking on full navigation so a fresh lookup always runs
       lastUrl.delete(details.tabId);
+      registeredDomain.delete(details.tabId);
       handleNavigation(details.tabId, details.url);
     },
     { url: [{ schemes: ["http", "https"] }] },
@@ -81,5 +98,6 @@ export default defineBackground(() => {
     browser.storage.session.remove(`tab-${tabId}`);
     lastUrl.delete(tabId);
     navSeq.delete(tabId);
+    registeredDomain.delete(tabId);
   });
 });

@@ -158,23 +158,22 @@ async function executeToolInner(
     const errorSuffix = errors.length > 0 ? `\nWarnings:\n${errors.join("\n")}` : "";
     if (exec.submitAction === "enter") {
       const target = exec.fields?.length
-        ? document.querySelector<HTMLElement>(exec.fields[exec.fields.length - 1].selector)
+        ? (deepQuery(exec.fields[exec.fields.length - 1].selector) as HTMLElement | null)
         : (query(exec.selector, params) as HTMLElement | null);
       if (target) {
         const form = target.closest("form");
         if (form) {
-          // Return result BEFORE submitting to avoid navigation destroying context
-          setTimeout(() => form.requestSubmit(), 0);
+          form.requestSubmit();
           return mcpResult(`Submitted ${toolName}${errorSuffix}`);
         } else {
           target.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }),
+            new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, composed: true }),
           );
           target.dispatchEvent(
-            new KeyboardEvent("keypress", { key: "Enter", code: "Enter", bubbles: true }),
+            new KeyboardEvent("keypress", { key: "Enter", code: "Enter", bubbles: true, composed: true }),
           );
           target.dispatchEvent(
-            new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true }),
+            new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true, composed: true }),
           );
           return mcpResult(`Submitted ${toolName}${errorSuffix}`);
         }
@@ -188,8 +187,7 @@ async function executeToolInner(
         : (query(interpolate(exec.selector, params) + ` [type="submit"]`) as HTMLElement | null);
       const clickTarget = submitEl ?? (query(exec.selector, params) as HTMLElement | null);
       if (clickTarget) {
-        // Defer click to let return happen first (in case of navigation)
-        setTimeout(() => clickTarget.click(), 0);
+        clickTarget.click();
         return mcpResult(`Submitted ${toolName}${errorSuffix}`);
       }
       return mcpResult(
@@ -204,7 +202,11 @@ async function executeToolInner(
 
   // Extract result (no submit)
   if (exec.resultWaitSelector) {
-    await waitForSelector(exec.resultWaitSelector).catch(() => null);
+    if (exec.resultRequired) {
+      await waitForSelector(exec.resultWaitSelector);
+    } else {
+      await waitForSelector(exec.resultWaitSelector).catch(() => null);
+    }
   } else if (exec.resultDelay) {
     await new Promise((r) => setTimeout(r, exec.resultDelay));
   }
@@ -224,6 +226,47 @@ async function executeToolInner(
   return mcpResult(`Executed ${toolName}`);
 }
 
+function realClick(el: HTMLElement) {
+  // Use element center coordinates so handlers that check clientX/clientY
+  // (animations, hit-tests) receive plausible values.
+  const rect = el.getBoundingClientRect();
+  const x = Math.round(rect.left + rect.width / 2);
+  const y = Math.round(rect.top + rect.height / 2);
+
+  const bubbling: PointerEventInit & MouseEventInit = {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: x,
+    clientY: y,
+    screenX: x,
+    screenY: y,
+    pointerId: 1,
+    isPrimary: true,
+  };
+  // pointerenter/pointerleave and mouseenter/mouseleave must NOT bubble — they are
+  // boundary events and React's root-level delegation relies on them being non-bubbling.
+  const nonBubbling: PointerEventInit & MouseEventInit = {
+    ...bubbling,
+    bubbles: false,
+    cancelable: false,
+  };
+
+  el.dispatchEvent(new PointerEvent("pointerover", bubbling));
+  el.dispatchEvent(new PointerEvent("pointerenter", nonBubbling));
+  el.dispatchEvent(new MouseEvent("mouseover", bubbling));
+  el.dispatchEvent(new MouseEvent("mouseenter", nonBubbling));
+  el.dispatchEvent(new PointerEvent("pointerdown", bubbling));
+  el.dispatchEvent(new MouseEvent("mousedown", bubbling));
+  el.dispatchEvent(new PointerEvent("pointerup", bubbling));
+  el.dispatchEvent(new MouseEvent("mouseup", bubbling));
+  el.dispatchEvent(new MouseEvent("click", bubbling));
+  el.dispatchEvent(new PointerEvent("pointerout", bubbling));
+  el.dispatchEvent(new PointerEvent("pointerleave", nonBubbling));
+  el.dispatchEvent(new MouseEvent("mouseout", bubbling));
+  el.dispatchEvent(new MouseEvent("mouseleave", nonBubbling));
+}
+
 async function executeStep(step: ActionStep, params: Record<string, unknown>): Promise<unknown> {
   switch (step.action) {
     case "navigate": {
@@ -232,8 +275,10 @@ async function executeStep(step: ActionStep, params: Record<string, unknown>): P
       return `Navigating to ${url}`;
     }
     case "click": {
-      const el = query(step.selector, params) as HTMLElement | null;
-      if (!el) return `Error: Click target not found: ${step.selector}`;
+      const el = await waitForClickable(step.selector, params);
+      if (!el) return `Error: Click target not found or not clickable: ${step.selector}`;
+      // Use native .click() so the event has isTrusted:true — sites like X.com
+      // check isTrusted on reply/like handlers and ignore synthetic events.
       el.click();
       return null;
     }
@@ -274,6 +319,17 @@ async function executeStep(step: ActionStep, params: Record<string, unknown>): P
       }
       return null;
     }
+    case "evaluate": {
+      if (step.value) {
+        try {
+          // eslint-disable-next-line no-new-func
+          await new Function(`return (async () => { ${interpolate(step.value, params)} })()`)();
+        } catch (e) {
+          console.warn("[webmcp-hub] evaluate step error:", e);
+        }
+      }
+      return null;
+    }
   }
 }
 
@@ -286,7 +342,7 @@ async function fillToolField(field: ToolField, value: unknown): Promise<string |
   if (field.type === "radio" && field.options) {
     const option = field.options.find((o) => o.value === String(value));
     if (!option) return `No radio option matches value "${value}"`;
-    const el = document.querySelector<HTMLInputElement>(option.selector);
+    const el = deepQuery(option.selector) as HTMLInputElement | null;
     if (!el) return `Radio option element not found: ${option.selector}`;
     el.checked = true;
     el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -297,7 +353,7 @@ async function fillToolField(field: ToolField, value: unknown): Promise<string |
 
 /** Fill a DOM field. Returns an error message if the element was not found, or null on success. */
 async function fillField(selector: string, value: unknown): Promise<string | null> {
-  const el = document.querySelector<HTMLElement>(selector);
+  const el = deepQuery(selector) as HTMLElement | null;
   if (!el) return `Element not found: ${selector}`;
 
   // Contenteditable: the matched element itself may be a wrapper div —
@@ -390,7 +446,7 @@ async function waitForSelector(
 
       if (state === "hidden" && !el) return resolve();
       if (state === "exists" && el) return resolve();
-      if (state === "visible" && el && (el as HTMLElement).offsetParent !== null) return resolve();
+      if (state === "visible" && el && isVisible(el)) return resolve();
 
       if (Date.now() - start > timeout) {
         return reject(new Error(`Timeout waiting for ${selector}`));
@@ -399,6 +455,26 @@ async function waitForSelector(
       requestAnimationFrame(check);
     };
 
+    check();
+  });
+}
+
+async function waitForClickable(
+  selector: string,
+  params?: Record<string, unknown>,
+  timeout = 5000,
+): Promise<HTMLElement | null> {
+  const start = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      const el = query(selector, params) as HTMLElement | null;
+      if (el) {
+        const isEnabled = !(el as HTMLButtonElement).disabled;
+        if (isVisible(el) && isEnabled) return resolve(el);
+      }
+      if (Date.now() - start > timeout) return resolve(null);
+      requestAnimationFrame(check);
+    };
     check();
   });
 }
@@ -429,22 +505,67 @@ function extractResult(
   return el.textContent?.trim() ?? "";
 }
 
-function checkState(el: Element | null, state: "visible" | "exists" | "hidden"): boolean {
-  if (state === "hidden") return !el;
-  if (state === "exists") return !!el;
-  return !!el && (el as HTMLElement).offsetParent !== null;
+function isVisible(el: Element): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  const style = getComputedStyle(el);
+  if (style.display === "none") return false;
+  if (style.visibility === "hidden") return false;
+  if (style.opacity === "0") return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return false;
+  return true;
 }
 
-// Support :has-text("...") pseudo-selector (not native CSS)
+function checkState(el: Element | null, state: "visible" | "exists" | "hidden"): boolean {
+  if (state === "hidden") return !el || !isVisible(el);
+  if (state === "exists") return !!el;
+  return !!el && isVisible(el);
+}
+
+function deepQuery(selector: string, root: Document | ShadowRoot = document): Element | null {
+  const el = root.querySelector(selector);
+  if (el) return el;
+  for (const host of root.querySelectorAll("*")) {
+    if (host.shadowRoot) {
+      const found = deepQuery(selector, host.shadowRoot);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function deepQueryAll(selector: string, root: Document | ShadowRoot = document): Element[] {
+  const results: Element[] = [...root.querySelectorAll(selector)];
+  for (const host of root.querySelectorAll("*")) {
+    if (host.shadowRoot) {
+      results.push(...deepQueryAll(selector, host.shadowRoot));
+    }
+  }
+  return results;
+}
+
+// Support :has-text("...") pseudo-selector (not native CSS).
+// Handles both quote styles and escaped quotes inside the string (e.g. "it's done").
+const HAS_TEXT_RE = /^(.+?):has-text\((?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\)\s*(.*)$/;
+
+function normalizeText(el: Element): string {
+  return (el.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function matchesText(el: Element, text: string): boolean {
+  return normalizeText(el).includes(text.trim());
+}
+
 function query(selector: string, params?: Record<string, unknown>): Element | null {
   const resolved = params ? interpolate(selector, params) : selector;
-  const match = resolved.match(/^(.+?):has-text\(["'](.+?)["']\)\s*(.*)$/);
-  if (!match) return document.querySelector(resolved);
+  const match = resolved.match(HAS_TEXT_RE);
+  if (!match) return deepQuery(resolved);
 
-  const [, base, text, suffix] = match;
-  const els = document.querySelectorAll(base);
+  const [, base, dq, sq, suffix] = match;
+  const text = dq ?? sq;
+  const els = deepQueryAll(base);
   for (const el of els) {
-    if (el.textContent?.includes(text)) {
+    if (matchesText(el, text)) {
       return suffix ? el.querySelector(suffix) : el;
     }
   }
@@ -453,14 +574,15 @@ function query(selector: string, params?: Record<string, unknown>): Element | nu
 
 function queryAll(selector: string, params?: Record<string, unknown>): Element[] {
   const resolved = params ? interpolate(selector, params) : selector;
-  const match = resolved.match(/^(.+?):has-text\(["'](.+?)["']\)\s*(.*)$/);
-  if (!match) return Array.from(document.querySelectorAll(resolved));
+  const match = resolved.match(HAS_TEXT_RE);
+  if (!match) return deepQueryAll(resolved);
 
-  const [, base, text, suffix] = match;
-  const els = document.querySelectorAll(base);
+  const [, base, dq, sq, suffix] = match;
+  const text = dq ?? sq;
+  const els = deepQueryAll(base);
   const results: Element[] = [];
   for (const el of els) {
-    if (el.textContent?.includes(text)) {
+    if (matchesText(el, text)) {
       if (suffix) {
         const child = el.querySelector(suffix);
         if (child) results.push(child);

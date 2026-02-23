@@ -119,6 +119,11 @@ export interface ConditionStep {
   else?: ActionStep[];
 }
 
+export interface EvaluateStep {
+  action: "evaluate";
+  value: string;
+}
+
 export type ActionStep =
   | NavigateStep
   | ClickStep
@@ -127,7 +132,8 @@ export type ActionStep =
   | WaitStep
   | ExtractStep
   | ScrollStep
-  | ConditionStep;
+  | ConditionStep
+  | EvaluateStep;
 
 // ---------------------------------------------------------------------------
 // Execution Descriptor

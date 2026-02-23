@@ -167,13 +167,28 @@ async function executeToolInner(
           return mcpResult(`Submitted ${toolName}${errorSuffix}`);
         } else {
           target.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, composed: true }),
+            new KeyboardEvent("keydown", {
+              key: "Enter",
+              code: "Enter",
+              bubbles: true,
+              composed: true,
+            }),
           );
           target.dispatchEvent(
-            new KeyboardEvent("keypress", { key: "Enter", code: "Enter", bubbles: true, composed: true }),
+            new KeyboardEvent("keypress", {
+              key: "Enter",
+              code: "Enter",
+              bubbles: true,
+              composed: true,
+            }),
           );
           target.dispatchEvent(
-            new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true, composed: true }),
+            new KeyboardEvent("keyup", {
+              key: "Enter",
+              code: "Enter",
+              bubbles: true,
+              composed: true,
+            }),
           );
           return mcpResult(`Submitted ${toolName}${errorSuffix}`);
         }
@@ -225,7 +240,6 @@ async function executeToolInner(
 
   return mcpResult(`Executed ${toolName}`);
 }
-
 
 async function executeStep(step: ActionStep, params: Record<string, unknown>): Promise<unknown> {
   switch (step.action) {

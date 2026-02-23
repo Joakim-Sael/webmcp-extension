@@ -310,30 +310,42 @@ async function fillField(selector: string, value: unknown): Promise<string | nul
   if (editableEl) {
     editableEl.focus();
 
-    // document.execCommand is blocked in content scripts without a user gesture.
-    // Instead: clear the DOM directly, set new text, then fire the events React listens to.
-    editableEl.innerHTML = "";
-    editableEl.appendChild(document.createTextNode(String(value)));
-
-    // Move cursor to end so subsequent typing appends correctly
-    const range = document.createRange();
-    range.selectNodeContents(editableEl);
-    range.collapse(false);
+    // Select all existing content via the Selection API so the paste replaces it.
+    const selectRange = document.createRange();
+    selectRange.selectNodeContents(editableEl);
     window.getSelection()?.removeAllRanges();
-    window.getSelection()?.addRange(range);
+    window.getSelection()?.addRange(selectRange);
 
-    // Fire beforeinput → input in sequence; React 17+ listens at the root for both
-    editableEl.dispatchEvent(
-      new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        inputType: "insertText",
-        data: String(value),
-      }),
-    );
-    editableEl.dispatchEvent(
-      new InputEvent("input", { bubbles: true, inputType: "insertText", data: String(value) }),
-    );
+    // Dispatch a paste event so rich-text editors (Lexical, Draft.js) process the text
+    // through their own state machines. Direct innerHTML + input/beforeinput bypasses the
+    // editor's internal EditorState, which is why submit buttons stay disabled even when
+    // text appears in the box.
+    const dt = new DataTransfer();
+    dt.setData("text/plain", String(value));
+    const pasteEvent = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dt,
+    });
+    editableEl.dispatchEvent(pasteEvent);
+
+    // If no editor handled the paste (event.defaultPrevented stays false), fall back to
+    // direct DOM manipulation for plain contenteditable elements.
+    if (!pasteEvent.defaultPrevented) {
+      editableEl.innerHTML = "";
+      editableEl.appendChild(document.createTextNode(String(value)));
+      editableEl.dispatchEvent(
+        new InputEvent("input", { bubbles: true, inputType: "insertText", data: String(value) }),
+      );
+      // Move cursor to end — only needed for the plain contenteditable fallback;
+      // rich-text editors (Lexical, Draft.js) manage their own cursor after paste.
+      const range = document.createRange();
+      range.selectNodeContents(editableEl);
+      range.collapse(false);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+    }
+
     return null;
   }
 

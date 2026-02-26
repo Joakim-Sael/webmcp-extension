@@ -197,10 +197,19 @@ async function executeToolInner(
         `Error: Submit target not found for "${toolName}". Selector: ${exec.selector}${errorSuffix}`,
       );
     } else {
-      const submitEl = exec.submitSelector
-        ? (query(exec.submitSelector, params) as HTMLElement | null)
-        : (query(interpolate(exec.selector, params) + ` [type="submit"]`) as HTMLElement | null);
-      const clickTarget = submitEl ?? (query(exec.selector, params) as HTMLElement | null);
+      let clickTarget: HTMLElement | null;
+      if (exec.submitSelector) {
+        clickTarget = await waitForClickable(exec.submitSelector, params);
+      } else {
+        clickTarget = await waitForClickable(
+          interpolate(exec.selector, params) + ` [type="submit"]`,
+          undefined,
+          2500,
+        );
+        if (!clickTarget) {
+          clickTarget = await waitForClickable(exec.selector, params);
+        }
+      }
       if (clickTarget) {
         clickTarget.click();
         return mcpResult(`Submitted ${toolName}${errorSuffix}`);
@@ -257,13 +266,15 @@ async function executeStep(step: ActionStep, params: Record<string, unknown>): P
       return null;
     }
     case "fill": {
+      const selector = interpolate(step.selector, params);
       const value = interpolate(step.value, params);
-      const err = await fillField(step.selector, value);
+      const err = await fillField(selector, value);
       return err ? `Error: ${err}` : null;
     }
     case "select": {
+      const selector = interpolate(step.selector, params);
       const value = interpolate(step.value, params);
-      const err = await fillField(step.selector, value);
+      const err = await fillField(selector, value);
       return err ? `Error: ${err}` : null;
     }
     case "wait": {
@@ -326,7 +337,7 @@ async function fillToolField(field: ToolField, value: unknown): Promise<string |
 
 /** Fill a DOM field. Returns an error message if the element was not found, or null on success. */
 async function fillField(selector: string, value: unknown): Promise<string | null> {
-  const el = deepQuery(selector) as HTMLElement | null;
+  const el = query(selector) as HTMLElement | null;
   if (!el) return `Element not found: ${selector}`;
 
   // Contenteditable: the matched element itself may be a wrapper div —
@@ -465,7 +476,7 @@ function extractResult(
   if (mode === "table") {
     const rows = queryAll(`${selector} tr`);
     return rows.map((row) => {
-      const cells = row.querySelectorAll("td, th");
+      const cells = deepQueryAll("td, th", row);
       return Array.from(cells).map((c) => c.textContent?.trim() ?? "");
     });
   }
@@ -507,7 +518,7 @@ function deepQuery(selector: string, root: Document | ShadowRoot = document): El
   return null;
 }
 
-function deepQueryAll(selector: string, root: Document | ShadowRoot = document): Element[] {
+function deepQueryAll(selector: string, root: Document | ShadowRoot | Element = document): Element[] {
   const results: Element[] = [...root.querySelectorAll(selector)];
   for (const host of root.querySelectorAll("*")) {
     if (host.shadowRoot) {

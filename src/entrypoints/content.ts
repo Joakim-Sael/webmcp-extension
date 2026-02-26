@@ -518,7 +518,10 @@ function deepQuery(selector: string, root: Document | ShadowRoot = document): El
   return null;
 }
 
-function deepQueryAll(selector: string, root: Document | ShadowRoot | Element = document): Element[] {
+function deepQueryAll(
+  selector: string,
+  root: Document | ShadowRoot | Element = document,
+): Element[] {
   const results: Element[] = [...root.querySelectorAll(selector)];
   for (const host of root.querySelectorAll("*")) {
     if (host.shadowRoot) {

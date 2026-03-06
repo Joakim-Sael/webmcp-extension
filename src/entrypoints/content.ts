@@ -15,9 +15,8 @@ type ToolRegistration = {
 };
 
 type ModelContext = {
-  provideContext: (ctx: { tools: ToolRegistration[] }) => void;
   registerTool: (descriptor: ToolRegistration) => void;
-  unregisterTool?: (name: string) => void;
+  unregisterTool: (name: string) => void;
 };
 
 // Track currently registered tool names so we can clean up on page change
@@ -81,18 +80,12 @@ function registerTools(configs: WebMcpConfig[]) {
     }
   }
 
-  // Use provideContext for atomic replacement when available, fall back to register/unregister
-  if (ctx.provideContext) {
-    ctx.provideContext({ tools });
-  } else {
-    if (ctx.unregisterTool) {
-      for (const name of registeredTools) {
-        if (!seen.has(name)) ctx.unregisterTool(name);
-      }
-    }
-    for (const tool of tools) {
-      ctx.registerTool(tool);
-    }
+  // Unregister stale tools, then register current ones
+  for (const name of registeredTools) {
+    if (!seen.has(name)) ctx.unregisterTool(name);
+  }
+  for (const tool of tools) {
+    ctx.registerTool(tool);
   }
 
   registeredTools.clear();
